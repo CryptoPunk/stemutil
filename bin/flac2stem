@@ -1,0 +1,130 @@
+#!/usr/bin/python3
+import os, sys, subprocess
+import shutil
+import pathlib
+import tempfile
+import os.path
+import stempeg
+import numpy as np
+import mutagen.flac
+import mutagen.mp4
+import logging
+import pkg_resources
+
+import stemutil
+
+log = logging.getLogger(__name__)
+
+def print_help():
+    print("Usage: %s INPUT_FILENAME" % sys.argv[0])
+
+if len(sys.argv) != 2:
+    print_help()
+    sys.exit(-1)
+
+track = sys.argv[1]
+
+if not os.path.exists(track):
+    print("Input file %s does not exist" % (track))
+    sys.exit(-1)
+
+log.info("Converting %s to Native Instruments stem file", track)
+
+tmp_path = tempfile.mkdtemp(prefix="stem-")
+
+## spleeter separate
+#spleeter separate -o ./stems -p spleeter:4stems $INPUT_FILENAME
+
+spleeter_env = dict(os.environ)
+if "MODEL_PATH" not in spleeter_env:
+    spleeter_env["MODEL_PATH"] = pkg_resources.resource_filename('stemutil','models/spleeter')
+
+subprocess.run(["spleeter", "separate", "--filename_format", "{instrument}.{codec}",
+                                        "--output_path", tmp_path,
+                                        "--params_filename", os.path.join(spleeter_env["MODEL_PATH"],"4stems-fine.json"),
+                                        track], env=spleeter_env)
+
+if not os.path.exists(os.path.join(tmp_path,"drums.wav")):
+    sys.exit(-1)
+
+## Convert to stem
+
+mix, sample_rate = stempeg.read.read_stems(track)
+drums, _ = stempeg.read.read_stems(os.path.join(tmp_path,"drums.wav"))
+bass, _ = stempeg.read.read_stems(os.path.join(tmp_path,"bass.wav"))
+synth, _ = stempeg.read.read_stems(os.path.join(tmp_path,"other.wav"))
+vocals, _ = stempeg.read.read_stems(os.path.join(tmp_path,"vocals.wav"))
+
+S = np.stack((mix, drums, bass, synth, vocals))
+
+'''
+stems_meta = [
+    {'name': "drums", 'color': "FFA500"},
+    {'name': "bass", 'color': "FFFF00"},
+    {'name': "synth", 'color': "008080"},
+    {'name': "vocals", 'color': "800080"}
+]
+'''
+
+ni_writer = stempeg.write.NIStemsWriter()
+
+stempeg.write_stems(path=os.path.join(tmp_path,'output.stem.mp4'), data=S, sample_rate=sample_rate, 
+		    writer=ni_writer)
+
+
+## Fixup metadata
+# import os.path
+# import mutagen
+# log track tmp_path
+
+log.info("Fixing Metadata")
+
+log.debug("Reading Metadata")
+
+src_info = mutagen.flac.Open(track)
+dst_info = mutagen.mp4.MP4(os.path.join(tmp_path,'output.stem.mp4'))
+
+log.info("Checking for cover art")
+
+cover_path = os.path.join(os.path.dirname(track),'cover.jpg')
+cover_data = None
+if os.path.isfile(cover_path):
+    with open(cover_path,'rb') as cover_fh:
+        cover_data = cover_fh.read()
+
+log.info("Cover art %s", "found" if cover_data is None else "not found")
+
+log.info("Reading FLAC Metadata")
+
+dst_info['\xa9nam'] = src_info['title'][0]
+dst_info['\xa9alb'] = src_info['album'][0]
+dst_info['\xa9ART'] = src_info['artist'][0]
+if 'tracknumber' in src_info and 'tracktotal' in src_info:
+    dst_info['trkn'] = [(int(src_info['tracknumber'][0]), int(src_info['tracktotal'][0]))]
+if 'discnumber' in src_info and 'disctotal' in src_info:
+    dst_info['disk'] = [(int(src_info['discnumber'][0]), int(src_info['disctotal'][0]))]
+if cover_data is not None:
+    mp4_cover = mutagen.mp4.MP4Cover(cover_data, imageformat=mutagen.mp4.MP4Cover.FORMAT_JPEG)
+    dst_info['covr'] = [mp4_cover]
+
+dst_info.save()
+
+# Move files
+# import pathlib
+# import os, os.path
+# track, src_info, tmp_path
+
+output_dir = os.path.join("stems",src_info['artist'][0], src_info['album'][0])
+
+log.debug("Creating directory %s", output_dir)
+
+pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+filename =  os.path.splitext(os.path.basename(track))[0] + ".stem.mp4"
+dest_path = os.path.join(output_dir, filename)
+
+os.rename(os.path.join(tmp_path,'output.stem.mp4'), dest_path)
+
+## Delete tmp_path
+
+shutil.rmtree(tmp_path)
