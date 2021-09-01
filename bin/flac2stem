@@ -41,7 +41,7 @@ if "MODEL_PATH" not in spleeter_env:
 
 subprocess.run(["spleeter", "separate", "--filename_format", "{instrument}.{codec}",
                                         "--output_path", tmp_path,
-                                        "--params_filename", os.path.join(spleeter_env["MODEL_PATH"],"4stems-fine.json"),
+                                        "--params_filename", os.path.join(spleeter_env["MODEL_PATH"],"4stems.json"),
                                         track], env=spleeter_env)
 
 if not os.path.exists(os.path.join(tmp_path,"drums.wav")):

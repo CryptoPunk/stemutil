@@ -18,7 +18,7 @@ version = '0.0.1'
 scripts = glob.glob('bin/*')
 
 # define the models to be included in the PyPI package
-package_data = ['models/*' ]
+package_data = ['models/*/*.json', 'models/*/*/*' ]
 
 # some PyPI metadata
 classifiers = ['Development Status :: 3 - Alpha',
