@@ -6,6 +6,12 @@ This file contains the setup for setuptools to distribute everything as a
 
 """
 
+import tarfile
+
+# Extract Data
+tar = tarfile.open('4stems.tar.gz')
+tar.extractall('stemutil/models/spleeter/4stems')
+
 from setuptools import setup, find_packages
 
 import glob
