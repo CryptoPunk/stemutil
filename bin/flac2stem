@@ -116,7 +116,9 @@ stems_meta = [
 ]
 '''
 
-ni_writer = stempeg.write.NIStemsWriter(codec='alac')
+# ALAC codec makes files ~450Mb.
+#ni_writer = stempeg.write.NIStemsWriter(codec='alac')
+ni_writer = stempeg.write.NIStemsWriter()
 
 stempeg.write_stems(path=os.path.join(tmp_path,'output.stem.mp4'), data=S, sample_rate=sample_rate, 
 		    writer=ni_writer)
