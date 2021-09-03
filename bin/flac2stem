@@ -13,6 +13,55 @@ import pkg_resources
 
 import stemutil
 
+import mutagen.easymp4
+
+# Install missing easymp4 labels. TODO: Push back to mutagen
+def gen_pair_handlers(first_label):
+    pair_get = mutagen.easymp4.EasyMP4Tags.Get[first_label]
+    pair_set = mutagen.easymp4.EasyMP4Tags.Set[first_label]
+
+    def pair_total_get(tags, key):
+        second = None
+        try:
+            second = pair_get(tags, first_label)[0]
+            if "/" in second:
+                second = second.split("/")[1]
+            second = int(second)
+        except KeyError:
+            second = 0
+        return [second]
+    def pair_total_set(tags, key, value):
+        first = None
+        try:
+            first = pair_get(tags, first_label)[0]
+            if "/" in first:
+                first = pair.split("/")[0]
+            first = int(first)
+        except KeyError:
+            first = 0
+        value = u"{}/{}".format(first, value[0])
+        pair_set(tags, first_label, [value])
+
+    def pair_total_del(tags, key):
+        pair_total_set(key,0)
+
+    return (pair_total_get,pair_total_set,pair_total_del)
+
+mutagen.easymp4.EasyMP4Tags.RegisterKey('tracktotal', *gen_pair_handlers('tracknumber'))
+mutagen.easymp4.EasyMP4Tags.RegisterKey('disctotal', *gen_pair_handlers('discnumber'))
+mutagen.easymp4.EasyMP4Tags.RegisterFreeformKey("isrc", "ISRC", mean="com.apple.iTunes")
+isrc_setter = mutagen.easymp4.EasyMP4Tags.Set["isrc"]
+def wrap_isrc_atom(tags, key, value):
+    if not isinstance(value, mutagen.mp4.MP4FreeForm):
+        value = mutagen.mp4.MP4FreeForm(value, dataformat=AtomDataType.ISRC)
+    isrc_setter(tags, key, value)
+mutagen.easymp4.EasyMP4Tags.Set["isrc"] = isrc_setter 
+mutagen.easymp4.EasyMP4Tags.RegisterTextKey('lyrics','\xa9lyr')
+mutagen.easymp4.EasyMP4Tags.RegisterTextKey('composer','\xa9wrt')
+mutagen.easymp4.EasyMP4Tags.RegisterTextKey('cover','covr')
+
+
+
 log = logging.getLogger(__name__)
 
 def print_help():
@@ -33,7 +82,8 @@ log.info("Converting %s to Native Instruments stem file", track)
 tmp_path = tempfile.mkdtemp(prefix="stem-")
 
 ## spleeter separate
-#spleeter separate -o ./stems -p spleeter:4stems $INPUT_FILENAME
+# spleeter separate -o ./stems -p spleeter:4stems $INPUT_FILENAME
+# TODO: Replace with prediction based on exported/saved model.
 
 spleeter_env = dict(os.environ)
 if "MODEL_PATH" not in spleeter_env:
@@ -73,16 +123,13 @@ stempeg.write_stems(path=os.path.join(tmp_path,'output.stem.mp4'), data=S, sampl
 
 
 ## Fixup metadata
-# import os.path
-# import mutagen
-# log track tmp_path
 
 log.info("Fixing Metadata")
 
 log.debug("Reading Metadata")
 
 src_info = mutagen.flac.Open(track)
-dst_info = mutagen.mp4.MP4(os.path.join(tmp_path,'output.stem.mp4'))
+dst_info = mutagen.easymp4.EasyMP4(os.path.join(tmp_path,'output.stem.mp4'))
 
 log.info("Checking for cover art")
 
@@ -92,27 +139,20 @@ if os.path.isfile(cover_path):
     with open(cover_path,'rb') as cover_fh:
         cover_data = cover_fh.read()
 
-log.info("Cover art %s", "found" if cover_data is None else "not found")
+log.info("Cover art %s", "found, adding to metadata" if cover_data is None else "not found")
 
-log.info("Reading FLAC Metadata")
-
-dst_info['\xa9nam'] = src_info['title'][0]
-dst_info['\xa9alb'] = src_info['album'][0]
-dst_info['\xa9ART'] = src_info['artist'][0]
-if 'tracknumber' in src_info and 'tracktotal' in src_info:
-    dst_info['trkn'] = [(int(src_info['tracknumber'][0]), int(src_info['tracktotal'][0]))]
-if 'discnumber' in src_info and 'disctotal' in src_info:
-    dst_info['disk'] = [(int(src_info['discnumber'][0]), int(src_info['disctotal'][0]))]
 if cover_data is not None:
     mp4_cover = mutagen.mp4.MP4Cover(cover_data, imageformat=mutagen.mp4.MP4Cover.FORMAT_JPEG)
-    dst_info['covr'] = [mp4_cover]
+    dst_info['cover'] = [mp4_cover]
+
+log.info("Copying FLAC Metadata to MP4")
+
+for k,v in src_info.items():
+    dst_info[k] = v
 
 dst_info.save()
 
 # Move files
-# import pathlib
-# import os, os.path
-# track, src_info, tmp_path
 
 output_dir = os.path.join("stems",src_info['artist'][0], src_info['album'][0])
 
