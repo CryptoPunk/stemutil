@@ -116,7 +116,7 @@ stems_meta = [
 ]
 '''
 
-ni_writer = stempeg.write.NIStemsWriter()
+ni_writer = stempeg.write.NIStemsWriter(codec='alac')
 
 stempeg.write_stems(path=os.path.join(tmp_path,'output.stem.mp4'), data=S, sample_rate=sample_rate, 
 		    writer=ni_writer)
