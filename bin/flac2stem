@@ -150,13 +150,23 @@ if cover_data is not None:
 log.info("Copying FLAC Metadata to MP4")
 
 for k,v in src_info.items():
-    dst_info[k] = v
+    try:
+      dst_info[k] = v
+    except:
+      pass
 
 dst_info.save()
 
 # Move files
 
-output_dir = os.path.join("stems",src_info['artist'][0], src_info['album'][0])
+artist = "Unknown"
+album = "Unknown"
+if 'artist' in src_info:
+  artist = src_info['artist'][0]
+if 'album' in src_info:
+  album = src_info['album'][0]
+
+output_dir = os.path.join("stems", artist, album)
 
 log.debug("Creating directory %s", output_dir)
 
@@ -165,7 +175,7 @@ pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 filename =  os.path.splitext(os.path.basename(track))[0] + ".stem.mp4"
 dest_path = os.path.join(output_dir, filename)
 
-os.rename(os.path.join(tmp_path,'output.stem.mp4'), dest_path)
+shutil.copy(os.path.join(tmp_path,'output.stem.mp4'), dest_path)
 
 ## Delete tmp_path
 
